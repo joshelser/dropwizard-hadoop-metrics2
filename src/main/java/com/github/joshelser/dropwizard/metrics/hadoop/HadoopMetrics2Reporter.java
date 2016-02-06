@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.joshelser.dropwizard.metrics.hadoop;
+package com.github.joshelser.dropwizard.metrics.hadoop;
 
 import org.apache.hadoop.metrics2.MetricsCollector;
 import org.apache.hadoop.metrics2.MetricsInfo;
