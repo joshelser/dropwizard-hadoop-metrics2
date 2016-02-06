@@ -43,7 +43,7 @@
     <connection>scm:git:https://github.com/joshelser/dropwizard-hadoop-metrics2.git</connection>
   </scm>
   <properties>
-    <dropwizard-metrics.version>3.1.2</dropwizard-metrics.version>
+    <dropwizard-metrics.version>4.0.0-SNAPSHOT</dropwizard-metrics.version>
     <hadoop.version>2.6.0</hadoop.version>
     <junit.version>4.12</junit.version>
     <maven.compiler.source>1.7</maven.compiler.source>
