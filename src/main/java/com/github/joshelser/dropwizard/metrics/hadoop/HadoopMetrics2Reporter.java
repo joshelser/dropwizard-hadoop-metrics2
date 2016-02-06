@@ -23,16 +23,15 @@ import org.apache.hadoop.metrics2.MetricsSystem;
 import org.apache.hadoop.metrics2.lib.Interns;
 import org.apache.hadoop.metrics2.lib.MetricsRegistry;
 
-import io.dropwizard.metrics.Counter;
-import io.dropwizard.metrics.Gauge;
-import io.dropwizard.metrics.Histogram;
-import io.dropwizard.metrics.Meter;
-import io.dropwizard.metrics.MetricFilter;
-import io.dropwizard.metrics.MetricName;
-import io.dropwizard.metrics.MetricRegistry;
-import io.dropwizard.metrics.ScheduledReporter;
-import io.dropwizard.metrics.Snapshot;
-import io.dropwizard.metrics.Timer;
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricFilter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.ScheduledReporter;
+import com.codahale.metrics.Snapshot;
+import com.codahale.metrics.Timer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +44,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
- * A {@link io.dropwizard.metrics.Reporter} which also acts as a Hadoop Metrics2
+ * A {@link com.codahale.metrics.Reporter} which also acts as a Hadoop Metrics2
  * {@link MetricsSource}. Configure it like other Reporters.
  *
  * <pre>
@@ -170,11 +169,11 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   private final String context;
 
   @SuppressWarnings("rawtypes")
-  private final ConcurrentLinkedQueue<Entry<MetricName, Gauge>> dropwizardGauges;
-  private final ConcurrentLinkedQueue<Entry<MetricName, Counter>> dropwizardCounters;
-  private final ConcurrentLinkedQueue<Entry<MetricName, Histogram>> dropwizardHistograms;
-  private final ConcurrentLinkedQueue<Entry<MetricName, Meter>> dropwizardMeters;
-  private final ConcurrentLinkedQueue<Entry<MetricName, Timer>> dropwizardTimers;
+  private final ConcurrentLinkedQueue<Entry<String, Gauge>> dropwizardGauges;
+  private final ConcurrentLinkedQueue<Entry<String, Counter>> dropwizardCounters;
+  private final ConcurrentLinkedQueue<Entry<String, Histogram>> dropwizardHistograms;
+  private final ConcurrentLinkedQueue<Entry<String, Meter>> dropwizardMeters;
+  private final ConcurrentLinkedQueue<Entry<String, Timer>> dropwizardTimers;
 
   private HadoopMetrics2Reporter(MetricRegistry registry, TimeUnit rateUnit, TimeUnit durationUnit,
       MetricFilter filter, MetricsSystem metrics2System, String jmxContext, String description,
@@ -216,11 +215,11 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   void snapshotAllMetrics(MetricsRecordBuilder builder) {
     // Pass through the gauges
     @SuppressWarnings("rawtypes")
-    Iterator<Entry<MetricName, Gauge>> gaugeIterator = dropwizardGauges.iterator();
+    Iterator<Entry<String, Gauge>> gaugeIterator = dropwizardGauges.iterator();
     while (gaugeIterator.hasNext()) {
       @SuppressWarnings("rawtypes")
-      Entry<MetricName, Gauge> gauge = gaugeIterator.next();
-      final MetricsInfo info = Interns.info(gauge.getKey().getKey(), EMPTY_STRING);
+      Entry<String, Gauge> gauge = gaugeIterator.next();
+      final MetricsInfo info = Interns.info(gauge.getKey(), EMPTY_STRING);
       final Object o = gauge.getValue().getValue();
 
       // Figure out which gauge types metrics2 supports and call the right method
@@ -240,20 +239,20 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     }
 
     // Pass through the counters
-    Iterator<Entry<MetricName, Counter>> counterIterator = dropwizardCounters.iterator();
+    Iterator<Entry<String, Counter>> counterIterator = dropwizardCounters.iterator();
     while (counterIterator.hasNext()) {
-      Entry<MetricName, Counter> counter = counterIterator.next();
-      MetricsInfo info = Interns.info(counter.getKey().getKey(), EMPTY_STRING);
+      Entry<String, Counter> counter = counterIterator.next();
+      MetricsInfo info = Interns.info(counter.getKey(), EMPTY_STRING);
       LOG.info("Adding counter {} {}", info, counter.getValue().getCount());
       builder.addCounter(info, counter.getValue().getCount());
       counterIterator.remove();
     }
 
     // Pass through the histograms
-    Iterator<Entry<MetricName, Histogram>> histogramIterator = dropwizardHistograms.iterator();
+    Iterator<Entry<String, Histogram>> histogramIterator = dropwizardHistograms.iterator();
     while (histogramIterator.hasNext()) {
-      final Entry<MetricName, Histogram> entry = histogramIterator.next();
-      final String name = entry.getKey().getKey();
+      final Entry<String, Histogram> entry = histogramIterator.next();
+      final String name = entry.getKey();
       final Histogram histogram = entry.getValue();
 
       addSnapshot(builder, name, EMPTY_STRING, histogram.getSnapshot(), histogram.getCount());
@@ -262,10 +261,10 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     }
 
     // Pass through the meter values
-    Iterator<Entry<MetricName, Meter>> meterIterator = dropwizardMeters.iterator();
+    Iterator<Entry<String, Meter>> meterIterator = dropwizardMeters.iterator();
     while (meterIterator.hasNext()) {
-      final Entry<MetricName, Meter> meterEntry = meterIterator.next();
-      final String name = meterEntry.getKey().getKey();
+      final Entry<String, Meter> meterEntry = meterIterator.next();
+      final String name = meterEntry.getKey();
       final Meter meter = meterEntry.getValue();
 
       addMeter(builder, name, EMPTY_STRING, meter.getCount(), meter.getMeanRate(),
@@ -275,10 +274,10 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     }
 
     // Pass through the timers (meter + histogram)
-    Iterator<Entry<MetricName, Timer>> timerIterator = dropwizardTimers.iterator();
+    Iterator<Entry<String, Timer>> timerIterator = dropwizardTimers.iterator();
     while (timerIterator.hasNext()) {
-      final Entry<MetricName, Timer> timerEntry = timerIterator.next();
-      final String name = timerEntry.getKey().getKey();
+      final Entry<String, Timer> timerEntry = timerIterator.next();
+      final String name = timerEntry.getKey();
       final Timer timer = timerEntry.getValue();
       final Snapshot snapshot = timer.getSnapshot();
 
@@ -366,28 +365,26 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   }
 
   @SuppressWarnings("rawtypes")
-  @Override public void report(SortedMap<MetricName, Gauge> gauges, 
-                               SortedMap<MetricName, Counter> counters,
-                               SortedMap<MetricName, Histogram> histograms,
-                               SortedMap<MetricName, Meter> meters,
-                               SortedMap<MetricName, Timer> timers) {
-    for (Entry<MetricName, Gauge> gauge : gauges.entrySet()) {
+  @Override public void report(SortedMap<String, Gauge> gauges, 
+      SortedMap<String, Counter> counters, SortedMap<String, Histogram> histograms,
+      SortedMap<String, Meter> meters, SortedMap<String, Timer> timers) {
+    for (Entry<String, Gauge> gauge : gauges.entrySet()) {
       dropwizardGauges.add(gauge);
     }
 
-    for (Entry<MetricName, Counter> counter : counters.entrySet()) {
+    for (Entry<String, Counter> counter : counters.entrySet()) {
       dropwizardCounters.add(counter);
     }
 
-    for (Entry<MetricName, Histogram> histogram : histograms.entrySet()) {
+    for (Entry<String, Histogram> histogram : histograms.entrySet()) {
       dropwizardHistograms.add(histogram);
     }
 
-    for (Entry<MetricName, Meter> meter : meters.entrySet()) {
+    for (Entry<String, Meter> meter : meters.entrySet()) {
       dropwizardMeters.add(meter);
     }
 
-    for (Entry<MetricName, Timer> timer : timers.entrySet()) {
+    for (Entry<String, Timer> timer : timers.entrySet()) {
       dropwizardTimers.add(timer);
     }
   }
@@ -430,23 +427,23 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     return context;
   }
 
-  @SuppressWarnings("rawtypes") ConcurrentLinkedQueue<Entry<MetricName, Gauge>> getDropwizardGauges() {
+  @SuppressWarnings("rawtypes") ConcurrentLinkedQueue<Entry<String, Gauge>> getDropwizardGauges() {
     return dropwizardGauges;
   }
 
-  ConcurrentLinkedQueue<Entry<MetricName, Counter>> getDropwizardCounters() {
+  ConcurrentLinkedQueue<Entry<String, Counter>> getDropwizardCounters() {
     return dropwizardCounters;
   }
 
-  ConcurrentLinkedQueue<Entry<MetricName, Histogram>> getDropwizardHistograms() {
+  ConcurrentLinkedQueue<Entry<String, Histogram>> getDropwizardHistograms() {
     return dropwizardHistograms;
   }
 
-  ConcurrentLinkedQueue<Entry<MetricName, Meter>> getDropwizardMeters() {
+  ConcurrentLinkedQueue<Entry<String, Meter>> getDropwizardMeters() {
     return dropwizardMeters;
   }
 
-  ConcurrentLinkedQueue<Entry<MetricName, Timer>> getDropwizardTimers() {
+  ConcurrentLinkedQueue<Entry<String, Timer>> getDropwizardTimers() {
     return dropwizardTimers;
   }
 }

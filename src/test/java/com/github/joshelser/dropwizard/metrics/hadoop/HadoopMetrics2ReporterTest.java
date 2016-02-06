@@ -17,14 +17,13 @@ package com.github.joshelser.dropwizard.metrics.hadoop;
 
 import com.github.joshelser.dropwizard.metrics.hadoop.HadoopMetrics2Reporter.Builder;
 
-import io.dropwizard.metrics.Counter;
-import io.dropwizard.metrics.Gauge;
-import io.dropwizard.metrics.Histogram;
-import io.dropwizard.metrics.Meter;
-import io.dropwizard.metrics.MetricName;
-import io.dropwizard.metrics.MetricRegistry;
-import io.dropwizard.metrics.Snapshot;
-import io.dropwizard.metrics.Timer;
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Snapshot;
+import com.codahale.metrics.Timer;
 
 import org.apache.hadoop.metrics2.MetricsCollector;
 import org.apache.hadoop.metrics2.MetricsRecordBuilder;
@@ -97,7 +96,7 @@ public class HadoopMetrics2ReporterTest {
     };
 
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardGauges().add(new SimpleEntry<>(new MetricName("my_gauge"), gauge));
+    metrics2Reporter.getDropwizardGauges().add(new SimpleEntry<>("my_gauge", gauge));
 
     // Set some values
     gaugeValue.set(5L);
@@ -118,7 +117,7 @@ public class HadoopMetrics2ReporterTest {
     final Counter counter = new Counter();
 
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardCounters().add(new SimpleEntry<>(new MetricName("my_counter"), counter));
+    metrics2Reporter.getDropwizardCounters().add(new SimpleEntry<>("my_counter", counter));
 
     // Set some values
     counter.inc(5L);
@@ -171,7 +170,7 @@ public class HadoopMetrics2ReporterTest {
     Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
 
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardHistograms().add(new SimpleEntry<>(new MetricName(metricName), histogram));
+    metrics2Reporter.getDropwizardHistograms().add(new SimpleEntry<>(metricName, histogram));
 
     metrics2Reporter.getMetrics(collector, true);
 
@@ -205,7 +204,7 @@ public class HadoopMetrics2ReporterTest {
     final Snapshot snapshot = mock(Snapshot.class);
 
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardTimers().add(new SimpleEntry<>(new MetricName(metricName), timer));
+    metrics2Reporter.getDropwizardTimers().add(new SimpleEntry<>(metricName, timer));
 
     long count = 10L;
     double meanRate = 1.0;
@@ -291,7 +290,7 @@ public class HadoopMetrics2ReporterTest {
     final Meter meter = mock(Meter.class);
 
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardMeters().add(new SimpleEntry<>(new MetricName(metricName), meter));
+    metrics2Reporter.getDropwizardMeters().add(new SimpleEntry<>(metricName, meter));
 
     // Set some values
     long count = 10L;
