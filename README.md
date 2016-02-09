@@ -3,13 +3,15 @@
 This project is a simple Reporter which enables metrics collected by the
 [Dropwizard Metrics](https://dropwizard.github.io/metrics) library to be
 pushed to all configured [Hadoop Metrics2](https://hadoop.apache.org/docs/r2.7.2/api/org/apache/hadoop/metrics2/package-summary.html)
-system. In my opinion, Dropwizard Metrics is the superior API that feels more
-natural to use.
+system. This is done by creating a Reporter (Dropwizard) which is also a
+MetricsSource (Hadoop Metrics2).
 
-However, the intended means to push metrics into the [Ambari Metrics System](https://cwiki.apache.org/confluence/display/AMBARI/Metrics)
-is provided as a Hadoop Metrics2 Sink. This library acts as a bridge for applications
-to be instrumented via Dropwizard Metrics but to send those metrics to the Ambari
-Metrics System.
+This combination allows applications instrumented via Dropwizard Metrics to send
+their metrics to the [Ambari Metrics System](https://cwiki.apache.org/confluence/display/AMBARI/Metrics).
+
+Most of the other functionality present in Hadoop Metrics2 is already
+provided by Dropwizard Metrics. I personally prefer instrumenting code
+with Dropwizard Metrics' API, so this is the perfect middle-ground.
 
 ## Usage
 
