@@ -22,6 +22,7 @@
   <name>Hadoop Metrics2 Reporter for Dropwizard Metrics</name>
   <version>0.0.1-SNAPSHOT</version>
   <description>A reporter for Dropwizard Metrics which announces measurements using Hadoop Metrics2.</description>
+  <url>https://github.com/joshelser/dropwizard-hadoop-metrics2</url>
   <licenses>
     <license>
         <name>Apache License, Version 2.0</name>
@@ -29,6 +30,10 @@
         <distribution>repo</distribution>
     </license>
   </licenses>
+  <issueManagement>
+    <system>Github</system>
+    <url>https://github.com/joshelser/dropwizard-hadoop-metrics2/issues</url>
+  </issueManagement>
   <distributionManagement>
     <snapshotRepository>
       <id>ossrh</id>
@@ -41,7 +46,16 @@
   </distributionManagement>
   <scm>
     <connection>scm:git:https://github.com/joshelser/dropwizard-hadoop-metrics2.git</connection>
+    <developerConnection>scm:git:git@github.com:joshelser/dropwizard-hadoop-metrics2.git</developerConnection>
+    <url>https://github.com/joshelser/dropwizard-hadoop-metrics2</url>
   </scm>
+  <developers>
+    <developer>
+      <id>elserj</id>
+      <name>Josh Elser</name>
+      <email>joshelser@gmail.com</email>
+    </developer>
+  </developers>
   <properties>
     <dropwizard-metrics.version>3.1.2</dropwizard-metrics.version>
     <hadoop.version>2.6.0</hadoop.version>
