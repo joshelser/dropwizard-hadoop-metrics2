@@ -15,7 +15,8 @@ with Dropwizard Metrics' API, so this is the perfect middle-ground.
 
 ## Usage
 
-The Reporter is published in Maven Central and available for use:
+The Reporter is published in
+[Maven Central](http://search.maven.org/#search|ga|1|g%3A%22com.github.joshelser%22%20a%3A%22dropwizard-metrics-hadoop-metrics2-reporter%22) and available for use:
 
 ```
 <dependency>
