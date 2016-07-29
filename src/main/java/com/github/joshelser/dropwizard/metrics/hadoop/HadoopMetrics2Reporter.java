@@ -232,7 +232,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       } else if (o instanceof Double) {
         builder.addGauge(info, (double) o);
       } else {
-        LOG.info("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
+        LOG.debug("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
       }
 
       gaugeIterator.remove();
@@ -243,7 +243,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     while (counterIterator.hasNext()) {
       Entry<String, Counter> counter = counterIterator.next();
       MetricsInfo info = Interns.info(counter.getKey(), EMPTY_STRING);
-      LOG.info("Adding counter {} {}", info, counter.getValue().getCount());
+      LOG.debug("Adding counter {} {}", info, counter.getValue().getCount());
       builder.addCounter(info, counter.getValue().getCount());
       counterIterator.remove();
     }
