@@ -425,6 +425,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     for (Entry<String,T> entry : metricsToAdd) {
       // Assume that we have space (normal condition)
       if (!queue.offer(entry)) {
+        LOG.debug("Failed to add metrics element. Removing {} elements from queue", entriesLeftToAdd);
         // If we fail to add the entry to the tail of the queue, try to free up enough space
         // for all remaining entries
         for (int i = 0; i < entriesLeftToAdd; i++) {
