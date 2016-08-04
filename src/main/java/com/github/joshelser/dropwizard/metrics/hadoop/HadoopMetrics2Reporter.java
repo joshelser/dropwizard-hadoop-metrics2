@@ -15,6 +15,14 @@
  */
 package com.github.joshelser.dropwizard.metrics.hadoop;
 
+import java.util.Iterator;
+import java.util.Map.Entry;
+import java.util.Objects;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.hadoop.metrics2.MetricsCollector;
 import org.apache.hadoop.metrics2.MetricsInfo;
 import org.apache.hadoop.metrics2.MetricsRecordBuilder;
@@ -22,26 +30,19 @@ import org.apache.hadoop.metrics2.MetricsSource;
 import org.apache.hadoop.metrics2.MetricsSystem;
 import org.apache.hadoop.metrics2.lib.Interns;
 import org.apache.hadoop.metrics2.lib.MetricsRegistry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
+import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.ScheduledReporter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.Iterator;
-import java.util.Map.Entry;
-import java.util.Objects;
-import java.util.SortedMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link com.codahale.metrics.Reporter} which also acts as a Hadoop Metrics2
@@ -65,6 +66,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       Interns.info("rate_unit", "The unit of measure for rate metrics");
   public static final MetricsInfo DURATION_UNIT_LABEL =
       Interns.info("duration_unit", "The unit of measure of duration metrics");
+  public static final int DEFAULT_MAXIMUM_METRICS_PER_TYPE = 1000;
 
   /**
    * Returns a new {@link Builder} for {@link HadoopMetrics2Reporter}.
@@ -85,6 +87,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     private TimeUnit rateUnit;
     private TimeUnit durationUnit;
     private String recordContext;
+    private int maxMetricsPerType = DEFAULT_MAXIMUM_METRICS_PER_TYPE;
 
     private Builder(MetricRegistry registry) {
       this.registry = registry;
@@ -139,6 +142,25 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     }
 
     /**
+     * Overrides the default maximum number of Dropwizard {@link Metric} instances which are cached
+     * to be passed to the Hadoop Metrics2 {@link MetricsCollector}. Default is {@link #DEFAULT_MAXIMUM_METRICS_PER_TYPE}.
+     * Negative values are interpreted as {@link Integer#MAX_VALUE} and a value of zero is disallowed. 
+     *
+     * @param maxMetricsPerType The number of metric instances which are allowed by type.
+     * @return {@code this}
+     */
+    public Builder maximumCachedMetricsPerType(int maxMetricsPerType) {
+      if (0 < maxMetricsPerType) {
+        this.maxMetricsPerType = maxMetricsPerType;
+      } else if (0 > maxMetricsPerType) {
+        this.maxMetricsPerType = Integer.MAX_VALUE;
+      } else {
+        throw new IllegalArgumentException("Maximum number of cached metrics of zero (0) is disallowed");
+      }
+      return this;
+    }
+
+    /**
      * Builds a {@link HadoopMetrics2Reporter} with the given properties, making metrics available
      * to the Hadoop Metrics2 framework (any configured {@link MetricsSource}s.
      *
@@ -159,7 +181,8 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
           Objects.requireNonNull(jmxContext),
           description,
           recordName,
-          recordContext);
+          recordContext,
+          this.maxMetricsPerType);
     }
   }
 
@@ -167,28 +190,30 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   private final MetricsSystem metrics2System;
   private final String recordName;
   private final String context;
+  private final int maxMetricsPerType;
 
   @SuppressWarnings("rawtypes")
-  private final ConcurrentLinkedQueue<Entry<String, Gauge>> dropwizardGauges;
-  private final ConcurrentLinkedQueue<Entry<String, Counter>> dropwizardCounters;
-  private final ConcurrentLinkedQueue<Entry<String, Histogram>> dropwizardHistograms;
-  private final ConcurrentLinkedQueue<Entry<String, Meter>> dropwizardMeters;
-  private final ConcurrentLinkedQueue<Entry<String, Timer>> dropwizardTimers;
+  private final ArrayBlockingQueue<Entry<String, Gauge>> dropwizardGauges;
+  private final ArrayBlockingQueue<Entry<String, Counter>> dropwizardCounters;
+  private final ArrayBlockingQueue<Entry<String, Histogram>> dropwizardHistograms;
+  private final ArrayBlockingQueue<Entry<String, Meter>> dropwizardMeters;
+  private final ArrayBlockingQueue<Entry<String, Timer>> dropwizardTimers;
 
   private HadoopMetrics2Reporter(MetricRegistry registry, TimeUnit rateUnit, TimeUnit durationUnit,
       MetricFilter filter, MetricsSystem metrics2System, String jmxContext, String description,
-      String recordName, String context) {
+      String recordName, String context, int maxMetricsPerType) {
     super(registry, "hadoop-metrics2-reporter", filter, rateUnit, durationUnit);
     this.metrics2Registry = new MetricsRegistry(Interns.info(jmxContext, description));
     this.metrics2System = metrics2System;
     this.recordName = recordName;
     this.context = context;
+    this.maxMetricsPerType = maxMetricsPerType;
 
-    this.dropwizardGauges = new ConcurrentLinkedQueue<>();
-    this.dropwizardCounters = new ConcurrentLinkedQueue<>();
-    this.dropwizardHistograms = new ConcurrentLinkedQueue<>();
-    this.dropwizardMeters = new ConcurrentLinkedQueue<>();
-    this.dropwizardTimers = new ConcurrentLinkedQueue<>();
+    this.dropwizardGauges = new ArrayBlockingQueue<>(maxMetricsPerType);
+    this.dropwizardCounters = new ArrayBlockingQueue<>(maxMetricsPerType);
+    this.dropwizardHistograms = new ArrayBlockingQueue<>(maxMetricsPerType);
+    this.dropwizardMeters = new ArrayBlockingQueue<>(maxMetricsPerType);
+    this.dropwizardTimers = new ArrayBlockingQueue<>(maxMetricsPerType);
 
     // Register this source with the Metrics2 system.
     // Make sure this is the last thing done as getMetrics() can be called at any time after.
@@ -368,24 +393,56 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   @Override public void report(SortedMap<String, Gauge> gauges, 
       SortedMap<String, Counter> counters, SortedMap<String, Histogram> histograms,
       SortedMap<String, Meter> meters, SortedMap<String, Timer> timers) {
-    for (Entry<String, Gauge> gauge : gauges.entrySet()) {
-      dropwizardGauges.add(gauge);
+    // ScheduledReporter is synchronizing on `this`, so we don't have to worry about concurrent
+    // invocations of this thread causing trouble.
+    addEntriesToQueue(dropwizardGauges, gauges);
+    addEntriesToQueue(dropwizardCounters, counters);
+    addEntriesToQueue(dropwizardHistograms, histograms);
+    addEntriesToQueue(dropwizardMeters, meters);
+    addEntriesToQueue(dropwizardTimers, timers);
+  }
+
+  /**
+   * Attempts to add all of the elements provided in {@code metrics} to the given {@code queue}. Upon
+   * the first failure to add an element, the head of the queue will be drained by the number of
+   * metrics still remaining to add, and the element will be re-offered. Upon subsequent failure to
+   * add the same element, this method will exit and not add the current or any future elements to the queue.
+   *
+   * @param queue The queue to add elements to
+   * @param metrics The metrics elements to add to the queue
+   */
+  protected <T> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,T>> queue, SortedMap<String, T> metrics) {
+    final Set<Entry<String,T>> metricsToAdd = metrics.entrySet();
+    int entriesLeftToAdd = metricsToAdd.size();
+
+    // The number of metrics to add exceeds the number of metrics we can store, clear out the queue
+    // while grabbing the lock once to be slightly more efficient.
+    if (entriesLeftToAdd > getMaxMetricsPerType()) {
+      queue.clear();
     }
 
-    for (Entry<String, Counter> counter : counters.entrySet()) {
-      dropwizardCounters.add(counter);
-    }
+    // Iterate over each metric we have to add
+    for (Entry<String,T> entry : metricsToAdd) {
+      // Assume that we have space (normal condition)
+      if (!queue.offer(entry)) {
+        // If we fail to add the entry to the tail of the queue, try to free up enough space
+        // for all remaining entries
+        for (int i = 0; i < entriesLeftToAdd; i++) {
+          if (null == queue.poll()) {
+            // Queue is now empty
+            break;
+          }
+        }
+        // Re-attempt to add the metric
+        if (!queue.offer(entry)) {
+          // Failed a second time to add an element again after trying to free space. Give up and drop the remaining metrics
+          LOG.debug("Failed to aggregate {} remaining metrics out of {}", entriesLeftToAdd, metricsToAdd.size());
+          return;
+        }
+      }
 
-    for (Entry<String, Histogram> histogram : histograms.entrySet()) {
-      dropwizardHistograms.add(histogram);
-    }
-
-    for (Entry<String, Meter> meter : meters.entrySet()) {
-      dropwizardMeters.add(meter);
-    }
-
-    for (Entry<String, Timer> timer : timers.entrySet()) {
-      dropwizardTimers.add(timer);
+      // We successfully added the current entry (either immediately, or after the poll()'s and re-offer())
+      entriesLeftToAdd--;
     }
   }
 
@@ -427,23 +484,27 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     return context;
   }
 
-  @SuppressWarnings("rawtypes") ConcurrentLinkedQueue<Entry<String, Gauge>> getDropwizardGauges() {
+  @SuppressWarnings("rawtypes") ArrayBlockingQueue<Entry<String, Gauge>> getDropwizardGauges() {
     return dropwizardGauges;
   }
 
-  ConcurrentLinkedQueue<Entry<String, Counter>> getDropwizardCounters() {
+  ArrayBlockingQueue<Entry<String, Counter>> getDropwizardCounters() {
     return dropwizardCounters;
   }
 
-  ConcurrentLinkedQueue<Entry<String, Histogram>> getDropwizardHistograms() {
+  ArrayBlockingQueue<Entry<String, Histogram>> getDropwizardHistograms() {
     return dropwizardHistograms;
   }
 
-  ConcurrentLinkedQueue<Entry<String, Meter>> getDropwizardMeters() {
+  ArrayBlockingQueue<Entry<String, Meter>> getDropwizardMeters() {
     return dropwizardMeters;
   }
 
-  ConcurrentLinkedQueue<Entry<String, Timer>> getDropwizardTimers() {
+  ArrayBlockingQueue<Entry<String, Timer>> getDropwizardTimers() {
     return dropwizardTimers;
+  }
+
+  int getMaxMetricsPerType() {
+    return this.maxMetricsPerType;
   }
 }
