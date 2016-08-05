@@ -227,7 +227,9 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       builder.setContext(context);
     }
 
-    snapshotAllMetrics(builder);
+    synchronized (this) {
+      snapshotAllMetrics(builder);
+    }
 
     metrics2Registry.snapshot(builder, all);
   }
@@ -411,7 +413,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    * @param queue The queue to add elements to
    * @param metrics The metrics elements to add to the queue
    */
-  protected <T> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,T>> queue, SortedMap<String, T> metrics) {
+  protected <T> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,T>> queue, SortedMap<String,T> metrics) {
     final Set<Entry<String,T>> metricsToAdd = metrics.entrySet();
     int entriesLeftToAdd = metricsToAdd.size();
 
