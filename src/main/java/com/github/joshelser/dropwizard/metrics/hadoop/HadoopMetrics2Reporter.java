@@ -192,6 +192,8 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   private final String context;
   private final int maxMetricsPerType;
 
+  // TODO Adding to the queues and removing from them are now guarded by explicit synchronization
+  // so these don't need to be safe for concurrency anymore.
   @SuppressWarnings("rawtypes")
   private final ArrayBlockingQueue<Entry<String, Gauge>> dropwizardGauges;
   private final ArrayBlockingQueue<Entry<String, Counter>> dropwizardCounters;
@@ -227,6 +229,8 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       builder.setContext(context);
     }
 
+    // Synchronizing here ensures that the dropwizard metrics collection side is excluded from executing
+    // at the same time we are pulling elements from the queues.
     synchronized (this) {
       snapshotAllMetrics(builder);
     }
