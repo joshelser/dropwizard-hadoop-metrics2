@@ -228,78 +228,93 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    * @param builder A record builder
    */
   void snapshotAllMetrics(MetricsRecordBuilder builder) {
-    // Pass through the gauges
-    @SuppressWarnings("rawtypes")
-    Iterator<Entry<String, Gauge>> gaugeIterator = dropwizardGauges.entrySet().iterator();
-    while (gaugeIterator.hasNext()) {
+    try {
+      // Pass through the gauges
       @SuppressWarnings("rawtypes")
-      Entry<String, Gauge> gauge = gaugeIterator.next();
-      final MetricsInfo info = Interns.info(gauge.getKey(), EMPTY_STRING);
-      final Object o = gauge.getValue().getValue();
+      Iterator<Entry<String, Gauge>> gaugeIterator = dropwizardGauges.entrySet().iterator();
+      while (gaugeIterator.hasNext()) {
+        @SuppressWarnings("rawtypes")
+        Entry<String, Gauge> gauge = gaugeIterator.next();
+        final MetricsInfo info = Interns.info(gauge.getKey(), EMPTY_STRING);
+        final Object o = gauge.getValue().getValue();
 
-      // Figure out which gauge types metrics2 supports and call the right method
-      if (o instanceof Integer) {
-        builder.addGauge(info, (int) o);
-      } else if (o instanceof Long) {
-        builder.addGauge(info, (long) o);
-      } else if (o instanceof Float) {
-        builder.addGauge(info, (float) o);
-      } else if (o instanceof Double) {
-        builder.addGauge(info, (double) o);
-      } else {
-        LOG.trace("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
+        // Figure out which gauge types metrics2 supports and call the right method
+        if (o instanceof Integer) {
+          builder.addGauge(info, (int) o);
+        } else if (o instanceof Long) {
+          builder.addGauge(info, (long) o);
+        } else if (o instanceof Float) {
+          builder.addGauge(info, (float) o);
+        } else if (o instanceof Double) {
+          builder.addGauge(info, (double) o);
+        } else {
+          LOG.trace("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
+        }
       }
+    } finally {
+      dropwizardGauges = EMPTY_GAUGE_MAP;
     }
-    dropwizardGauges = EMPTY_GAUGE_MAP;
 
-    // Pass through the counters
-    Iterator<Entry<String, Counter>> counterIterator = dropwizardCounters.entrySet().iterator();
-    while (counterIterator.hasNext()) {
-      Entry<String, Counter> counter = counterIterator.next();
-      MetricsInfo info = Interns.info(counter.getKey(), EMPTY_STRING);
-      builder.addCounter(info, counter.getValue().getCount());
+    try {
+      // Pass through the counters
+      Iterator<Entry<String, Counter>> counterIterator = dropwizardCounters.entrySet().iterator();
+      while (counterIterator.hasNext()) {
+        Entry<String, Counter> counter = counterIterator.next();
+        MetricsInfo info = Interns.info(counter.getKey(), EMPTY_STRING);
+        builder.addCounter(info, counter.getValue().getCount());
+      }
+    } finally {
+      dropwizardCounters = EMPTY_COUNTER_MAP;
     }
-    dropwizardCounters = EMPTY_COUNTER_MAP;
 
-    // Pass through the histograms
-    Iterator<Entry<String, Histogram>> histogramIterator = dropwizardHistograms.entrySet().iterator();
-    while (histogramIterator.hasNext()) {
-      final Entry<String, Histogram> entry = histogramIterator.next();
-      final String name = entry.getKey();
-      final Histogram histogram = entry.getValue();
+    try {
+      // Pass through the histograms
+      Iterator<Entry<String, Histogram>> histogramIterator = dropwizardHistograms.entrySet().iterator();
+      while (histogramIterator.hasNext()) {
+        final Entry<String, Histogram> entry = histogramIterator.next();
+        final String name = entry.getKey();
+        final Histogram histogram = entry.getValue();
 
-      addSnapshot(builder, name, EMPTY_STRING, histogram.getSnapshot(), histogram.getCount());
+        addSnapshot(builder, name, EMPTY_STRING, histogram.getSnapshot(), histogram.getCount());
+      }
+    } finally {
+      dropwizardHistograms = EMPTY_HISTOGRAM_MAP;
     }
-    dropwizardHistograms = EMPTY_HISTOGRAM_MAP;
 
-    // Pass through the meter values
-    Iterator<Entry<String, Meter>> meterIterator = dropwizardMeters.entrySet().iterator();
-    while (meterIterator.hasNext()) {
-      final Entry<String, Meter> meterEntry = meterIterator.next();
-      final String name = meterEntry.getKey();
-      final Meter meter = meterEntry.getValue();
+    try {
+      // Pass through the meter values
+      Iterator<Entry<String, Meter>> meterIterator = dropwizardMeters.entrySet().iterator();
+      while (meterIterator.hasNext()) {
+        final Entry<String, Meter> meterEntry = meterIterator.next();
+        final String name = meterEntry.getKey();
+        final Meter meter = meterEntry.getValue();
 
-      addMeter(builder, name, EMPTY_STRING, meter.getCount(), meter.getMeanRate(),
-          meter.getOneMinuteRate(), meter.getFiveMinuteRate(), meter.getFifteenMinuteRate());
+        addMeter(builder, name, EMPTY_STRING, meter.getCount(), meter.getMeanRate(),
+            meter.getOneMinuteRate(), meter.getFiveMinuteRate(), meter.getFifteenMinuteRate());
+      }
+    } finally {
+      dropwizardMeters = EMPTY_METER_MAP;
     }
-    dropwizardMeters = EMPTY_METER_MAP;
 
-    // Pass through the timers (meter + histogram)
-    Iterator<Entry<String, Timer>> timerIterator = dropwizardTimers.entrySet().iterator();
-    while (timerIterator.hasNext()) {
-      final Entry<String, Timer> timerEntry = timerIterator.next();
-      final String name = timerEntry.getKey();
-      final Timer timer = timerEntry.getValue();
-      final Snapshot snapshot = timer.getSnapshot();
+    try {
+      // Pass through the timers (meter + histogram)
+      Iterator<Entry<String, Timer>> timerIterator = dropwizardTimers.entrySet().iterator();
+      while (timerIterator.hasNext()) {
+        final Entry<String, Timer> timerEntry = timerIterator.next();
+        final String name = timerEntry.getKey();
+        final Timer timer = timerEntry.getValue();
+        final Snapshot snapshot = timer.getSnapshot();
 
-      // Add the meter info (mean rate and rate over time windows)
-      addMeter(builder, name, EMPTY_STRING, timer.getCount(), timer.getMeanRate(),
-          timer.getOneMinuteRate(), timer.getFiveMinuteRate(), timer.getFifteenMinuteRate());
+        // Add the meter info (mean rate and rate over time windows)
+        addMeter(builder, name, EMPTY_STRING, timer.getCount(), timer.getMeanRate(),
+            timer.getOneMinuteRate(), timer.getFiveMinuteRate(), timer.getFifteenMinuteRate());
 
-      // Count was already added via the meter
-      addSnapshot(builder, name, EMPTY_STRING, snapshot);
+        // Count was already added via the meter
+        addSnapshot(builder, name, EMPTY_STRING, snapshot);
+      }
+    } finally {
+      dropwizardTimers = EMPTY_TIMER_MAP;
     }
-    dropwizardTimers = EMPTY_TIMER_MAP;
 
     // Add in metadata about what the units the reported metrics are displayed using.
     builder.tag(RATE_UNIT_LABEL, getRateUnit());
