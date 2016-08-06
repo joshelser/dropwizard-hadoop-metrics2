@@ -34,27 +34,31 @@ import java.util.concurrent.ArrayBlockingQueue;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.codahale.metrics.Metric;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.MetricSnapshot;
+
 /**
  * Test class for the maintaining of the bounded queues of dropwizard metrics.
  */
 public class BoundedQueueMaintenanceTest {
 
   private HadoopMetrics2Reporter reporter;
+  private MetricSnapshotFactory snapshotFactory;
 
   @Before
   @SuppressWarnings("unchecked")
   public void setup() {
     this.reporter = mock(HadoopMetrics2Reporter.class);
+    this.snapshotFactory = mock(MetricSnapshotFactory.class);
 
     // Call the real addEntriesToQueue method
-    doCallRealMethod().when(reporter).addEntriesToQueue(any(ArrayBlockingQueue.class), any(SortedMap.class));
+    doCallRealMethod().when(reporter).addEntriesToQueue(any(ArrayBlockingQueue.class), any(SortedMap.class), any(MetricSnapshotFactory.class));
     when(reporter.consumeIncomingMetrics(any(Iterator.class), anyInt())).thenCallRealMethod();
   }
 
-  private void loadMap(TreeMap<String,Object> map, int numElementsToLoad) {
-    final Object o = new Object();
+  private void loadMap(TreeMap<String,Metric> map, int numElementsToLoad) {
     for (int i = 0; i < numElementsToLoad; i++) {
-      map.put("metric" + i, o);
+      map.put("metric" + i, null);
     }
   }
 
@@ -71,14 +75,14 @@ public class BoundedQueueMaintenanceTest {
   @Test
   public void metricsInExcessOfLimitClearQueue() {
     @SuppressWarnings("unchecked")
-    ArrayBlockingQueue<Entry<String,Object>> queue = mock(ArrayBlockingQueue.class);
-    TreeMap<String,Object> metrics = new TreeMap<>();
+    ArrayBlockingQueue<Entry<String,MetricSnapshot<Metric>>> queue = mock(ArrayBlockingQueue.class);
+    TreeMap<String,Metric> metrics = new TreeMap<>();
     loadMap(metrics, 2);
 
     // Super small limit on the number of metrics we will aggregate
     when(reporter.getMaxMetricsPerType()).thenReturn(1);
 
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     verify(queue).clear();
   }
@@ -88,19 +92,19 @@ public class BoundedQueueMaintenanceTest {
     int limit = 5;
     when(reporter.getMaxMetricsPerType()).thenReturn(limit);
 
-    ArrayBlockingQueue<Entry<String,Object>> queue = new ArrayBlockingQueue<>(limit);
-    TreeMap<String,Object> metrics = new TreeMap<>();
+    ArrayBlockingQueue<Entry<String,MetricSnapshot<Metric>>> queue = new ArrayBlockingQueue<>(limit);
+    TreeMap<String,Metric> metrics = new TreeMap<>();
     // [metric0, metric1, metric2]
     loadMap(metrics, 3);
 
     // Add three elements
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     // All three elements are added
     assertEquals(3, queue.size());
 
     // Add three elements again
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     // We filled up the queue
     assertEquals(limit, queue.size());
@@ -108,7 +112,7 @@ public class BoundedQueueMaintenanceTest {
     // [0,] 1, 2, 0, 1 ,2
     assertEquals("metric1", queue.peek().getKey());
 
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     // Queue is still full
     assertEquals(5, queue.size());
@@ -122,17 +126,17 @@ public class BoundedQueueMaintenanceTest {
     int limit = 10;
     when(reporter.getMaxMetricsPerType()).thenReturn(limit);
 
-    ArrayBlockingQueue<Entry<String,Object>> queue = new ArrayBlockingQueue<>(limit);
-    TreeMap<String,Object> metrics = new TreeMap<>();
+    ArrayBlockingQueue<Entry<String,MetricSnapshot<Metric>>> queue = new ArrayBlockingQueue<>(limit);
+    TreeMap<String,Metric> metrics = new TreeMap<>();
     loadMap(metrics, 6);
 
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     assertEquals(metrics.size(), queue.size());
 
     // Fake out `getMetrics()`
     // TODO refactor the reporter so that we can call the actual implementation
-    Iterator<Entry<String,Object>> iter = queue.iterator();
+    Iterator<Entry<String,MetricSnapshot<Metric>>> iter = queue.iterator();
     while (iter.hasNext()) {
       iter.next();
       // snapshot the dropwizard metric into the metrics2 metric
@@ -142,13 +146,13 @@ public class BoundedQueueMaintenanceTest {
     assertEquals(0, queue.size());
 
     // Add 6 entries
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     // Verify 6 entries
     assertEquals(metrics.size(), queue.size());
 
     // Add another 6 entries
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     // We should have hit the limit
     assertEquals(limit, queue.size());
@@ -165,17 +169,17 @@ public class BoundedQueueMaintenanceTest {
     assertEquals(2, queue.size());
 
     // Add six more one final time
-    reporter.addEntriesToQueue(queue, metrics);
+    reporter.addEntriesToQueue(queue, metrics, snapshotFactory);
 
     assertEquals(8, queue.size());
   }
 
   @Test
   public void incomingMetricPruning() {
-    TreeMap<String,Object> entries = new TreeMap<>();
+    TreeMap<String,Metric> entries = new TreeMap<>();
     loadMap(entries, 10);
 
-    Iterator<Entry<String,Object>> iter = entries.entrySet().iterator();
+    Iterator<Entry<String,Metric>> iter = entries.entrySet().iterator();
     int entriesPruned = reporter.consumeIncomingMetrics(iter, 4);
     assertEquals(4, entriesPruned);
     assertEquals(6, count(iter));

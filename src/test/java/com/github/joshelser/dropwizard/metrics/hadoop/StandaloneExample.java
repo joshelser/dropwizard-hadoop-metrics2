@@ -39,7 +39,7 @@ public class StandaloneExample {
     final MetricRegistry metrics = new MetricRegistry();
 
     final HadoopMetrics2Reporter metrics2Reporter = HadoopMetrics2Reporter.forRegistry(metrics)
-        .maximumCachedMetricsPerType(100)
+        .maximumCachedMetricsPerType(250)
         .build(DefaultMetricsSystem.initialize("StandaloneTest"), // The application-level name
                "Test", // Component name
                "Test", // Component description

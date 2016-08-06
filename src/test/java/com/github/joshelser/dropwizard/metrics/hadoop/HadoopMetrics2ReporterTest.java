@@ -16,7 +16,7 @@
 package com.github.joshelser.dropwizard.metrics.hadoop;
 
 import com.github.joshelser.dropwizard.metrics.hadoop.HadoopMetrics2Reporter.Builder;
-
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.MetricSnapshotFactoryImpl;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Histogram;
@@ -51,6 +51,7 @@ public class HadoopMetrics2ReporterTest {
   private MetricsSystem mockMetricsSystem;
   private String recordName = "myserver";
   private HadoopMetrics2Reporter metrics2Reporter;
+  private MetricSnapshotFactory snapshotFactory;
 
   @Before public void setup() {
     mockRegistry = mock(MetricRegistry.class);
@@ -61,6 +62,8 @@ public class HadoopMetrics2ReporterTest {
         .convertDurationsTo(TimeUnit.MILLISECONDS)
         .convertRatesTo(TimeUnit.SECONDS)
         .build(mockMetricsSystem, "MyServer", "My Cool Server", recordName);
+
+    snapshotFactory = new MetricSnapshotFactoryImpl(metrics2Reporter);
   }
 
   private void verifyRecordBuilderUnits(MetricsRecordBuilder recordBuilder) {
@@ -95,11 +98,11 @@ public class HadoopMetrics2ReporterTest {
       }
     };
 
-    // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardGauges().add(new SimpleEntry<>("my_gauge", gauge));
-
     // Set some values
     gaugeValue.set(5L);
+
+    // Add the metrics objects to the internal "queues" by hand
+    metrics2Reporter.getDropwizardGauges().add(new SimpleEntry<>("my_gauge", snapshotFactory.snapshot(gauge)));
 
     MetricsCollector collector = mock(MetricsCollector.class);
     MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
@@ -116,11 +119,11 @@ public class HadoopMetrics2ReporterTest {
   @Test public void testCounterReporting() {
     final Counter counter = new Counter();
 
-    // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardCounters().add(new SimpleEntry<>("my_counter", counter));
-
     // Set some values
     counter.inc(5L);
+
+    // Add the metrics objects to the internal "queues" by hand
+    metrics2Reporter.getDropwizardCounters().add(new SimpleEntry<>("my_counter", snapshotFactory.snapshot(counter)));
 
     MetricsCollector collector = mock(MetricsCollector.class);
     MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
@@ -170,7 +173,7 @@ public class HadoopMetrics2ReporterTest {
     Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
 
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardHistograms().add(new SimpleEntry<>(metricName, histogram));
+    metrics2Reporter.getDropwizardHistograms().add(new SimpleEntry<>(metricName, snapshotFactory.snapshot(histogram)));
 
     metrics2Reporter.getMetrics(collector, true);
 
@@ -202,9 +205,6 @@ public class HadoopMetrics2ReporterTest {
     final String metricName = "my_timer";
     final Timer timer = mock(Timer.class);
     final Snapshot snapshot = mock(Snapshot.class);
-
-    // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardTimers().add(new SimpleEntry<>(metricName, timer));
 
     long count = 10L;
     double meanRate = 1.0;
@@ -245,6 +245,9 @@ public class HadoopMetrics2ReporterTest {
     MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
 
     Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
+
+    // Add the metrics objects to the internal "queues" by hand
+    metrics2Reporter.getDropwizardTimers().add(new SimpleEntry<>(metricName, snapshotFactory.snapshot(timer)));
 
     metrics2Reporter.getMetrics(collector, true);
 
@@ -289,9 +292,6 @@ public class HadoopMetrics2ReporterTest {
     final String metricName = "my_meter";
     final Meter meter = mock(Meter.class);
 
-    // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardMeters().add(new SimpleEntry<>(metricName, meter));
-
     // Set some values
     long count = 10L;
     double meanRate = 1.0;
@@ -309,6 +309,9 @@ public class HadoopMetrics2ReporterTest {
     MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
 
     Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
+
+    // Add the metrics objects to the internal "queues" by hand
+    metrics2Reporter.getDropwizardMeters().add(new SimpleEntry<>(metricName, snapshotFactory.snapshot(meter)));
 
     metrics2Reporter.getMetrics(collector, true);
 
@@ -349,5 +352,29 @@ public class HadoopMetrics2ReporterTest {
     final String recordName = "Metrics";
 
     builder.build(mockMetricsSystem, jmxContext, desc, recordName);
+  }
+
+  @Test
+  public void counterModificationsAfterSnapshotAreUnseen() {
+    final Counter counter = new Counter();
+
+    // Counter is 1
+    counter.inc();
+
+    // Add the metrics objects to the internal "queues" by hand
+    metrics2Reporter.getDropwizardCounters().add(new SimpleEntry<>("my_counter", snapshotFactory.snapshot(counter)));
+
+    // Counter is further incremented, but should not be reflected when we collect it later
+    counter.inc(4);
+
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
+
+    Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
+
+    metrics2Reporter.getMetrics(collector, true);
+
+    verify(recordBuilder).addCounter(Interns.info("my_counter", ""), 1L);
+    verifyRecordBuilderUnits(recordBuilder);
   }
 }

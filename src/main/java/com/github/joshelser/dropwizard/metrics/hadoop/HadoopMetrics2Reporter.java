@@ -16,6 +16,7 @@
 package com.github.joshelser.dropwizard.metrics.hadoop;
 
 import java.text.SimpleDateFormat;
+import java.util.AbstractMap;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.Map.Entry;
@@ -42,8 +43,14 @@ import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.ScheduledReporter;
-import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.CounterSnapshot;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.GaugeSnapshot;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.HistogramSnapshot;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.MeterSnapshot;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.MetricSnapshot;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.MetricSnapshotFactoryImpl;
+import com.github.joshelser.dropwizard.metrics.hadoop.snapshot.TimerSnapshot;
 
 /**
  * A {@link com.codahale.metrics.Reporter} which also acts as a Hadoop Metrics2
@@ -61,7 +68,6 @@ import com.codahale.metrics.Timer;
  */
 public class HadoopMetrics2Reporter extends ScheduledReporter implements MetricsSource {
   private static final Logger LOG = LoggerFactory.getLogger(HadoopMetrics2Reporter.class);
-  private static final String EMPTY_STRING = "";
 
   public static final MetricsInfo RATE_UNIT_LABEL =
       Interns.info("rate_unit", "The unit of measure for rate metrics");
@@ -190,15 +196,15 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
   private final String recordName;
   private final String context;
   private final int maxMetricsPerType;
+  private final MetricSnapshotFactory snapshotFactory;
 
   // TODO Adding to the queues and removing from them are now guarded by explicit synchronization
   // so these don't need to be safe for concurrency anymore.
-  @SuppressWarnings("rawtypes")
-  private final ArrayBlockingQueue<Entry<String, Gauge>> dropwizardGauges;
-  private final ArrayBlockingQueue<Entry<String, Counter>> dropwizardCounters;
-  private final ArrayBlockingQueue<Entry<String, Histogram>> dropwizardHistograms;
-  private final ArrayBlockingQueue<Entry<String, Meter>> dropwizardMeters;
-  private final ArrayBlockingQueue<Entry<String, Timer>> dropwizardTimers;
+  private final ArrayBlockingQueue<Entry<String,GaugeSnapshot>> dropwizardGauges;
+  private final ArrayBlockingQueue<Entry<String,CounterSnapshot>> dropwizardCounters;
+  private final ArrayBlockingQueue<Entry<String,HistogramSnapshot>> dropwizardHistograms;
+  private final ArrayBlockingQueue<Entry<String,MeterSnapshot>> dropwizardMeters;
+  private final ArrayBlockingQueue<Entry<String,TimerSnapshot>> dropwizardTimers;
 
   private HadoopMetrics2Reporter(MetricRegistry registry, TimeUnit rateUnit, TimeUnit durationUnit,
       MetricFilter filter, MetricsSystem metrics2System, String jmxContext, String description,
@@ -220,6 +226,8 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     // Make sure this is the last thing done as getMetrics() can be called at any time after.
     this.metrics2System.register(Objects.requireNonNull(jmxContext),
         Objects.requireNonNull(description), this);
+
+    this.snapshotFactory = new MetricSnapshotFactoryImpl(this);
   }
 
   @Override public void getMetrics(MetricsCollector collector, boolean all) {
@@ -244,78 +252,50 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    */
   void snapshotAllMetrics(MetricsRecordBuilder builder) {
     // Pass through the gauges
-    @SuppressWarnings("rawtypes")
-    Iterator<Entry<String, Gauge>> gaugeIterator = dropwizardGauges.iterator();
+    Iterator<Entry<String, GaugeSnapshot>> gaugeIterator = dropwizardGauges.iterator();
     while (gaugeIterator.hasNext()) {
-      @SuppressWarnings("rawtypes")
-      Entry<String, Gauge> gauge = gaugeIterator.next();
-      final MetricsInfo info = Interns.info(gauge.getKey(), EMPTY_STRING);
-      final Object o = gauge.getValue().getValue();
-
-      // Figure out which gauge types metrics2 supports and call the right method
-      if (o instanceof Integer) {
-        builder.addGauge(info, (int) o);
-      } else if (o instanceof Long) {
-        builder.addGauge(info, (long) o);
-      } else if (o instanceof Float) {
-        builder.addGauge(info, (float) o);
-      } else if (o instanceof Double) {
-        builder.addGauge(info, (double) o);
-      } else {
-        LOG.trace("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
-      }
+      Entry<String, GaugeSnapshot> gauge = gaugeIterator.next();
+      gauge.getValue().snapshot(builder, gauge.getKey());
 
       gaugeIterator.remove();
     }
 
     // Pass through the counters
-    Iterator<Entry<String, Counter>> counterIterator = dropwizardCounters.iterator();
+    Iterator<Entry<String, CounterSnapshot>> counterIterator = dropwizardCounters.iterator();
     while (counterIterator.hasNext()) {
-      Entry<String, Counter> counter = counterIterator.next();
-      MetricsInfo info = Interns.info(counter.getKey(), EMPTY_STRING);
-      builder.addCounter(info, counter.getValue().getCount());
+      Entry<String, CounterSnapshot> counter = counterIterator.next();
+      counter.getValue().snapshot(builder, counter.getKey());
       counterIterator.remove();
     }
 
     // Pass through the histograms
-    Iterator<Entry<String, Histogram>> histogramIterator = dropwizardHistograms.iterator();
+    Iterator<Entry<String, HistogramSnapshot>> histogramIterator = dropwizardHistograms.iterator();
     while (histogramIterator.hasNext()) {
-      final Entry<String, Histogram> entry = histogramIterator.next();
+      final Entry<String, HistogramSnapshot> entry = histogramIterator.next();
       final String name = entry.getKey();
-      final Histogram histogram = entry.getValue();
-
-      addSnapshot(builder, name, EMPTY_STRING, histogram.getSnapshot(), histogram.getCount());
+      entry.getValue().snapshot(builder, name);
 
       histogramIterator.remove();
     }
 
     // Pass through the meter values
-    Iterator<Entry<String, Meter>> meterIterator = dropwizardMeters.iterator();
+    Iterator<Entry<String, MeterSnapshot>> meterIterator = dropwizardMeters.iterator();
     while (meterIterator.hasNext()) {
-      final Entry<String, Meter> meterEntry = meterIterator.next();
+      final Entry<String, MeterSnapshot> meterEntry = meterIterator.next();
       final String name = meterEntry.getKey();
-      final Meter meter = meterEntry.getValue();
-
-      addMeter(builder, name, EMPTY_STRING, meter.getCount(), meter.getMeanRate(),
-          meter.getOneMinuteRate(), meter.getFiveMinuteRate(), meter.getFifteenMinuteRate());
+      final MeterSnapshot meter = meterEntry.getValue();
+      meter.snapshot(builder, name);
 
       meterIterator.remove();
     }
 
     // Pass through the timers (meter + histogram)
-    Iterator<Entry<String, Timer>> timerIterator = dropwizardTimers.iterator();
+    Iterator<Entry<String, TimerSnapshot>> timerIterator = dropwizardTimers.iterator();
     while (timerIterator.hasNext()) {
-      final Entry<String, Timer> timerEntry = timerIterator.next();
+      final Entry<String, TimerSnapshot> timerEntry = timerIterator.next();
       final String name = timerEntry.getKey();
-      final Timer timer = timerEntry.getValue();
-      final Snapshot snapshot = timer.getSnapshot();
-
-      // Add the meter info (mean rate and rate over time windows)
-      addMeter(builder, name, EMPTY_STRING, timer.getCount(), timer.getMeanRate(),
-          timer.getOneMinuteRate(), timer.getFiveMinuteRate(), timer.getFifteenMinuteRate());
-
-      // Count was already added via the meter
-      addSnapshot(builder, name, EMPTY_STRING, snapshot);
+      final TimerSnapshot timer = timerEntry.getValue();
+      timer.snapshot(builder, name);
 
       timerIterator.remove();
     }
@@ -325,85 +305,17 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     builder.tag(DURATION_UNIT_LABEL, getDurationUnit());
   }
 
-  /**
-   * Add Dropwizard-Metrics rate information to a Hadoop-Metrics2 record builder, converting the
-   * rates to the appropriate unit.
-   *
-   * @param builder A Hadoop-Metrics2 record builder.
-   * @param name A base name for this record.
-   * @param desc A description for the record.
-   * @param count The number of measured events.
-   * @param meanRate The average measured rate.
-   * @param oneMinuteRate The measured rate over the past minute.
-   * @param fiveMinuteRate The measured rate over the past five minutes
-   * @param fifteenMinuteRate The measured rate over the past fifteen minutes.
-   */
-  private void addMeter(MetricsRecordBuilder builder, String name, String desc, long count,
-      double meanRate, double oneMinuteRate, double fiveMinuteRate, double fifteenMinuteRate) {
-    builder.addGauge(Interns.info(name + "_count", EMPTY_STRING), count);
-    builder.addGauge(Interns.info(name + "_mean_rate", EMPTY_STRING), convertRate(meanRate));
-    builder.addGauge(Interns.info(name + "_1min_rate", EMPTY_STRING), convertRate(oneMinuteRate));
-    builder.addGauge(Interns.info(name + "_5min_rate", EMPTY_STRING), convertRate(fiveMinuteRate));
-    builder.addGauge(Interns.info(name + "_15min_rate", EMPTY_STRING),
-        convertRate(fifteenMinuteRate));
-  }
-
-  /**
-   * Add Dropwizard-Metrics value-distribution data to a Hadoop-Metrics2 record building, converting
-   * the durations to the appropriate unit.
-   *
-   * @param builder A Hadoop-Metrics2 record builder.
-   * @param name A base name for this record.
-   * @param desc A description for this record.
-   * @param snapshot The distribution of measured values.
-   * @param count The number of values which were measured.
-   */
-  private void addSnapshot(MetricsRecordBuilder builder, String name, String desc,
-      Snapshot snapshot, long count) {
-    builder.addGauge(Interns.info(name + "_count", desc), count);
-    addSnapshot(builder, name, desc, snapshot);
-  }
-
-  /**
-   * Add Dropwizard-Metrics value-distribution data to a Hadoop-Metrics2 record building, converting
-   * the durations to the appropriate unit.
-   *
-   * @param builder A Hadoop-Metrics2 record builder.
-   * @param name A base name for this record.
-   * @param desc A description for this record.
-   * @param snapshot The distribution of measured values.
-   */
-  private void addSnapshot(MetricsRecordBuilder builder, String name, String desc,
-      Snapshot snapshot) {
-    builder.addGauge(Interns.info(name + "_mean", desc), convertDuration(snapshot.getMean()));
-    builder.addGauge(Interns.info(name + "_min", desc), convertDuration(snapshot.getMin()));
-    builder.addGauge(Interns.info(name + "_max", desc), convertDuration(snapshot.getMax()));
-    builder.addGauge(Interns.info(name + "_median", desc), convertDuration(snapshot.getMedian()));
-    builder.addGauge(Interns.info(name + "_stddev", desc), convertDuration(snapshot.getStdDev()));
-
-    builder.addGauge(Interns.info(name + "_75thpercentile", desc),
-        convertDuration(snapshot.get75thPercentile()));
-    builder.addGauge(Interns.info(name + "_95thpercentile", desc),
-        convertDuration(snapshot.get95thPercentile()));
-    builder.addGauge(Interns.info(name + "_98thpercentile", desc),
-        convertDuration(snapshot.get98thPercentile()));
-    builder.addGauge(Interns.info(name + "_99thpercentile", desc),
-        convertDuration(snapshot.get99thPercentile()));
-    builder.addGauge(Interns.info(name + "_999thpercentile", desc),
-        convertDuration(snapshot.get999thPercentile()));
-  }
-
   @SuppressWarnings("rawtypes")
   @Override public void report(SortedMap<String, Gauge> gauges, 
       SortedMap<String, Counter> counters, SortedMap<String, Histogram> histograms,
       SortedMap<String, Meter> meters, SortedMap<String, Timer> timers) {
     // ScheduledReporter is synchronizing on `this`, so we don't have to worry about concurrent
     // invocations of reporter causing trouble.
-    addEntriesToQueue(dropwizardGauges, gauges);
-    addEntriesToQueue(dropwizardCounters, counters);
-    addEntriesToQueue(dropwizardHistograms, histograms);
-    addEntriesToQueue(dropwizardMeters, meters);
-    addEntriesToQueue(dropwizardTimers, timers);
+    addEntriesToQueue(dropwizardGauges, gauges, snapshotFactory);
+    addEntriesToQueue(dropwizardCounters, counters, snapshotFactory);
+    addEntriesToQueue(dropwizardHistograms, histograms, snapshotFactory);
+    addEntriesToQueue(dropwizardMeters, meters, snapshotFactory);
+    addEntriesToQueue(dropwizardTimers, timers, snapshotFactory);
   }
 
   /**
@@ -414,9 +326,12 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    *
    * @param queue The queue to add elements to
    * @param metrics The metrics elements to add to the queue
-   * @param <T> The concrete Metric type
+   * @param factory The {@link MetricSnapshotFactory} implementation to use
+   * @param <T> The concrete {@link Metric} type
+   * @param <S> The {@link MetricSnapshot} for the {@link Metric} in {@code T}
    */
-  protected <T> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,T>> queue, SortedMap<String,T> metrics) {
+  protected <T extends Metric,S extends MetricSnapshot<T>> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,S>> queue,
+      SortedMap<String,T> metrics, MetricSnapshotFactory factory) {
     final Iterator<Entry<String,T>> metricsToAdd = metrics.entrySet().iterator();
     int entriesLeftToAdd = metrics.size();
 
@@ -436,8 +351,13 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     // Iterate over each metric we have to add
     while (metricsToAdd.hasNext()) {
       Entry<String,T> entry = metricsToAdd.next();
+      // Again, making the parameterization happy. This is safe.
+      @SuppressWarnings("unchecked")
+      S snapshot = (S) factory.snapshot(entry.getValue());
+      Entry<String,S> snapshotEntry = new AbstractMap.SimpleEntry<>(entry.getKey(), snapshot);
+
       // Assume that we have space (normal condition)
-      if (!queue.offer(entry)) {
+      if (!queue.offer(snapshotEntry)) {
         LOG.trace("Failed to add metrics element. Removing {} elements from queue", entriesLeftToAdd);
         // If we fail to add the entry to the tail of the queue, try to free up enough space
         // for all remaining entries
@@ -448,7 +368,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
           }
         }
         // Re-attempt to add the metric
-        if (!queue.offer(entry)) {
+        if (!queue.offer(snapshotEntry)) {
           // Failed a second time to add an element again after trying to free space. Give up and drop the remaining metrics
           LOG.trace("Failed to aggregate {} remaining metrics out of {}", entriesLeftToAdd, metrics.size());
           return;
@@ -497,12 +417,12 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     return super.getDurationUnit();
   }
 
-  @Override protected double convertDuration(double duration) {
+  @Override public double convertDuration(double duration) {
     // Make it visible to the tests
     return super.convertDuration(duration);
   }
 
-  @Override protected double convertRate(double rate) {
+  @Override public double convertRate(double rate) {
     // Make it visible to the tests
     return super.convertRate(rate);
   }
@@ -525,23 +445,23 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     return context;
   }
 
-  @SuppressWarnings("rawtypes") ArrayBlockingQueue<Entry<String, Gauge>> getDropwizardGauges() {
+  ArrayBlockingQueue<Entry<String,GaugeSnapshot>> getDropwizardGauges() {
     return dropwizardGauges;
   }
 
-  ArrayBlockingQueue<Entry<String, Counter>> getDropwizardCounters() {
+  ArrayBlockingQueue<Entry<String,CounterSnapshot>> getDropwizardCounters() {
     return dropwizardCounters;
   }
 
-  ArrayBlockingQueue<Entry<String, Histogram>> getDropwizardHistograms() {
+  ArrayBlockingQueue<Entry<String,HistogramSnapshot>> getDropwizardHistograms() {
     return dropwizardHistograms;
   }
 
-  ArrayBlockingQueue<Entry<String, Meter>> getDropwizardMeters() {
+  ArrayBlockingQueue<Entry<String,MeterSnapshot>> getDropwizardMeters() {
     return dropwizardMeters;
   }
 
-  ArrayBlockingQueue<Entry<String, Timer>> getDropwizardTimers() {
+  ArrayBlockingQueue<Entry<String,TimerSnapshot>> getDropwizardTimers() {
     return dropwizardTimers;
   }
 
