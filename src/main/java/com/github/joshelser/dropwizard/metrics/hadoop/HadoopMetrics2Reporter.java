@@ -264,7 +264,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       } else if (o instanceof Double) {
         builder.addGauge(info, (double) o);
       } else {
-        LOG.debug("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
+        LOG.trace("Ignoring Gauge ({}) with unhandled type: {}", gauge.getKey(), o.getClass());
       }
 
       gaugeIterator.remove();
@@ -275,7 +275,6 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     while (counterIterator.hasNext()) {
       Entry<String, Counter> counter = counterIterator.next();
       MetricsInfo info = Interns.info(counter.getKey(), EMPTY_STRING);
-      LOG.debug("Adding counter {} {}", info, counter.getValue().getCount());
       builder.addCounter(info, counter.getValue().getCount());
       counterIterator.remove();
     }
@@ -417,6 +416,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    *
    * @param queue The queue to add elements to
    * @param metrics The metrics elements to add to the queue
+   * @param <T> The concrete Metric type
    */
   protected <T> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,T>> queue, SortedMap<String,T> metrics) {
     final Iterator<Entry<String,T>> metricsToAdd = metrics.entrySet().iterator();
@@ -432,7 +432,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       final int excessEntries = entriesLeftToAdd - getMaxMetricsPerType();
       // The SortedMap is also unmodifiable. Need to just read the entries, cannot remove them
       final int entriesRemoved = consumeIncomingMetrics(metricsToAdd, excessEntries);
-      LOG.debug("Ignored {} incoming metric entries as they would not fit in the cache", entriesRemoved);
+      LOG.trace("Ignored {} incoming metric entries as they would not fit in the cache", entriesRemoved);
     }
 
     // Iterate over each metric we have to add
@@ -440,7 +440,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       Entry<String,T> entry = metricsToAdd.next();
       // Assume that we have space (normal condition)
       if (!queue.offer(entry)) {
-        LOG.debug("Failed to add metrics element. Removing {} elements from queue", entriesLeftToAdd);
+        LOG.trace("Failed to add metrics element. Removing {} elements from queue", entriesLeftToAdd);
         // If we fail to add the entry to the tail of the queue, try to free up enough space
         // for all remaining entries
         for (int i = 0; i < entriesLeftToAdd; i++) {
@@ -452,7 +452,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
         // Re-attempt to add the metric
         if (!queue.offer(entry)) {
           // Failed a second time to add an element again after trying to free space. Give up and drop the remaining metrics
-          LOG.debug("Failed to aggregate {} remaining metrics out of {}", entriesLeftToAdd, metrics.size());
+          LOG.trace("Failed to aggregate {} remaining metrics out of {}", entriesLeftToAdd, metrics.size());
           return;
         }
       }
@@ -468,6 +468,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    * @param metrics The metric entries to consume
    * @param numEntriesToConsume The number of entries to consume
    * @return the number of entries actually consumed
+   * @param <T> The concrete Metric type
    */
   protected <T> int consumeIncomingMetrics(Iterator<Entry<String,T>> metrics, int numEntriesToConsume) {
     // noop

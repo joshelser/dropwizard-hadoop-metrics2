@@ -39,7 +39,7 @@ public class StandaloneExample {
     final MetricRegistry metrics = new MetricRegistry();
 
     final HadoopMetrics2Reporter metrics2Reporter = HadoopMetrics2Reporter.forRegistry(metrics)
-        .maximumCachedMetricsPerType(10)
+        .maximumCachedMetricsPerType(100)
         .build(DefaultMetricsSystem.initialize("StandaloneTest"), // The application-level name
                "Test", // Component name
                "Test", // Component description
@@ -65,7 +65,7 @@ public class StandaloneExample {
     // How often will the dropwziard metrics be logged to the console
     consoleReporter.start(2, TimeUnit.SECONDS);
 
-    generateMetrics(metrics, 5000, 50, TimeUnit.MILLISECONDS, metrics2Reporter, 5);
+    generateMetrics(metrics, 5000, 25, TimeUnit.MILLISECONDS, metrics2Reporter, 10);
   }
 
   /**
