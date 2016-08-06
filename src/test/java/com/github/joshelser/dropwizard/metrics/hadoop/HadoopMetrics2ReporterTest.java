@@ -33,11 +33,13 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mockito;
 
-import java.util.AbstractMap.SimpleEntry;
+import java.util.Collections;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -95,8 +97,11 @@ public class HadoopMetrics2ReporterTest {
       }
     };
 
+    @SuppressWarnings("rawtypes")
+    TreeMap<String,Gauge> gauges = new TreeMap<>();
+    gauges.put("my_gauge", gauge);
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardGauges().add(new SimpleEntry<>("my_gauge", gauge));
+    metrics2Reporter.setDropwizardGauges(gauges);
 
     // Set some values
     gaugeValue.set(5L);
@@ -111,13 +116,19 @@ public class HadoopMetrics2ReporterTest {
 
     verify(recordBuilder).addGauge(Interns.info("my_gauge", ""), gaugeValue.get());
     verifyRecordBuilderUnits(recordBuilder);
+
+    // Should not be the same instance we gave before. Our map should have gotten swapped out.
+    assertTrue("Should not be the same map instance after collection",
+        gauges != metrics2Reporter.getDropwizardGauges());
   }
 
   @Test public void testCounterReporting() {
     final Counter counter = new Counter();
 
+    TreeMap<String,Counter> counters = new TreeMap<>();
+    counters.put("my_counter", counter);
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardCounters().add(new SimpleEntry<>("my_counter", counter));
+    metrics2Reporter.setDropwizardCounters(counters);
 
     // Set some values
     counter.inc(5L);
@@ -131,6 +142,10 @@ public class HadoopMetrics2ReporterTest {
 
     verify(recordBuilder).addCounter(Interns.info("my_counter", ""), 5L);
     verifyRecordBuilderUnits(recordBuilder);
+
+    // Should not be the same instance we gave before. Our map should have gotten swapped out.
+    assertTrue("Should not be the same map instance after collection",
+        counters != metrics2Reporter.getDropwizardCounters());
   }
 
   @Test public void testHistogramReporting() {
@@ -169,8 +184,10 @@ public class HadoopMetrics2ReporterTest {
 
     Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
 
+    TreeMap<String,Histogram> histograms = new TreeMap<>();
+    histograms.put(metricName, histogram);
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardHistograms().add(new SimpleEntry<>(metricName, histogram));
+    metrics2Reporter.setDropwizardHistograms(histograms);
 
     metrics2Reporter.getMetrics(collector, true);
 
@@ -196,6 +213,10 @@ public class HadoopMetrics2ReporterTest {
         metrics2Reporter.convertDuration(percentile999));
 
     verifyRecordBuilderUnits(recordBuilder);
+
+    // Should not be the same instance we gave before. Our map should have gotten swapped out.
+    assertTrue("Should not be the same map instance after collection",
+        histograms != metrics2Reporter.getDropwizardHistograms());
   }
 
   @Test public void testTimerReporting() {
@@ -203,8 +224,10 @@ public class HadoopMetrics2ReporterTest {
     final Timer timer = mock(Timer.class);
     final Snapshot snapshot = mock(Snapshot.class);
 
+    TreeMap<String,Timer> timers = new TreeMap<>();
+    timers.put(metricName, timer);
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardTimers().add(new SimpleEntry<>(metricName, timer));
+    metrics2Reporter.setDropwizardTimers(timers);
 
     long count = 10L;
     double meanRate = 1.0;
@@ -283,14 +306,20 @@ public class HadoopMetrics2ReporterTest {
         metrics2Reporter.convertDuration(percentile999));
 
     verifyRecordBuilderUnits(recordBuilder);
+
+    // Should not be the same instance we gave before. Our map should have gotten swapped out.
+    assertTrue("Should not be the same map instance after collection",
+        timers != metrics2Reporter.getDropwizardTimers());
   }
 
   @Test public void testMeterReporting() {
     final String metricName = "my_meter";
     final Meter meter = mock(Meter.class);
 
+    TreeMap<String,Meter> meters = new TreeMap<>();
+    meters.put(metricName, meter);
     // Add the metrics objects to the internal "queues" by hand
-    metrics2Reporter.getDropwizardMeters().add(new SimpleEntry<>(metricName, meter));
+    metrics2Reporter.setDropwizardMeters(meters);
 
     // Set some values
     long count = 10L;
@@ -325,29 +354,60 @@ public class HadoopMetrics2ReporterTest {
 
     // Verify the units
     verifyRecordBuilderUnits(recordBuilder);
+
+    // Should not be the same instance we gave before. Our map should have gotten swapped out.
+    assertTrue("Should not be the same map instance after collection",
+        meters != metrics2Reporter.getDropwizardMeters());
   }
 
-  @Test(expected = IllegalArgumentException.class)
-  public void builderNegativeMaxCachedSize() {
-    Builder builder = HadoopMetrics2Reporter.forRegistry(mockRegistry)
-        .maximumCachedMetricsPerType(-1);
+  @SuppressWarnings("rawtypes")
+  @Test
+  public void metrics2CycleIsNonDestructive() {
+    metrics2Reporter.setDropwizardCounters(Collections.unmodifiableSortedMap(new TreeMap<String,Counter>()));
+    metrics2Reporter.setDropwizardGauges(Collections.unmodifiableSortedMap(new TreeMap<String,Gauge>()));
+    metrics2Reporter.setDropwizardHistograms(Collections.unmodifiableSortedMap(new TreeMap<String,Histogram>()));
+    metrics2Reporter.setDropwizardMeters(Collections.unmodifiableSortedMap(new TreeMap<String,Meter>()));
+    metrics2Reporter.setDropwizardTimers(Collections.unmodifiableSortedMap(new TreeMap<String,Timer>()));
 
-    final String jmxContext = "MyJmxContext;sub=Foo";
-    final String desc = "Description";
-    final String recordName = "Metrics";
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
 
-    builder.build(mockMetricsSystem, jmxContext, desc, recordName);
+    Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
+
+    metrics2Reporter.getMetrics(collector, true);
   }
 
-  @Test(expected = IllegalArgumentException.class)
-  public void builderZeroMaxCachedSize() {
-    Builder builder = HadoopMetrics2Reporter.forRegistry(mockRegistry)
-        .maximumCachedMetricsPerType(0);
+  @SuppressWarnings("rawtypes")
+  @Test
+  public void cachedMetricsAreClearedAfterCycle() {
+    // After we perform a metrics2 reporting cycle, the maps should be reset to avoid double-reporting
+    TreeMap<String,Counter> counters = new TreeMap<>();
+    TreeMap<String,Gauge> gauges = new TreeMap<>();
+    TreeMap<String,Histogram> histograms = new TreeMap<>();
+    TreeMap<String,Meter> meters = new TreeMap<>();
+    TreeMap<String,Timer> timers = new TreeMap<>();
 
-    final String jmxContext = "MyJmxContext;sub=Foo";
-    final String desc = "Description";
-    final String recordName = "Metrics";
+    metrics2Reporter.setDropwizardCounters(counters);
+    metrics2Reporter.setDropwizardGauges(gauges);
+    metrics2Reporter.setDropwizardHistograms(histograms);
+    metrics2Reporter.setDropwizardMeters(meters);
+    metrics2Reporter.setDropwizardTimers(timers);
 
-    builder.build(mockMetricsSystem, jmxContext, desc, recordName);
-  }
+    MetricsCollector collector = mock(MetricsCollector.class);
+    MetricsRecordBuilder recordBuilder = mock(MetricsRecordBuilder.class);
+
+    Mockito.when(collector.addRecord(recordName)).thenReturn(recordBuilder);
+
+    metrics2Reporter.getMetrics(collector, true);
+
+    assertTrue(counters != metrics2Reporter.getDropwizardCounters());
+    assertEquals(0, metrics2Reporter.getDropwizardCounters().size());
+    assertTrue(gauges != metrics2Reporter.getDropwizardGauges());
+    assertEquals(0, metrics2Reporter.getDropwizardGauges().size());
+    assertTrue(histograms != metrics2Reporter.getDropwizardHistograms());
+    assertEquals(0, metrics2Reporter.getDropwizardHistograms().size());
+    assertTrue(meters != metrics2Reporter.getDropwizardMeters());
+    assertEquals(0, metrics2Reporter.getDropwizardMeters().size());
+    assertTrue(timers != metrics2Reporter.getDropwizardTimers());
+    assertEquals(0, metrics2Reporter.getDropwizardTimers().size());  }
 }
