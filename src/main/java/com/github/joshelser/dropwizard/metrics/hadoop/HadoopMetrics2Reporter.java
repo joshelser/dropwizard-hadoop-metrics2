@@ -145,20 +145,18 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
     /**
      * Overrides the default maximum number of Dropwizard {@link Metric} instances which are cached
      * to be passed to the Hadoop Metrics2 {@link MetricsCollector}. Default is {@link #DEFAULT_MAXIMUM_METRICS_PER_TYPE}.
-     * Negative values are interpreted as {@link Integer#MAX_VALUE} and a value of zero is disallowed. 
+     * Only positive values are allowed, negative numbers and zero are disallowed. 
      *
      * @param maxMetricsPerType The number of metric instances which are allowed by type.
      * @return {@code this}
+     * @throws IllegalArgumentException if {@code maxMetricsPerType} is non-positive.
      */
     public Builder maximumCachedMetricsPerType(int maxMetricsPerType) {
       if (0 < maxMetricsPerType) {
         this.maxMetricsPerType = maxMetricsPerType;
-      } else if (0 > maxMetricsPerType) {
-        this.maxMetricsPerType = Integer.MAX_VALUE;
-      } else {
-        throw new IllegalArgumentException("Maximum number of cached metrics of zero (0) is disallowed");
+        return this;
       }
-      return this;
+      throw new IllegalArgumentException("The maximum number of cached metrics must be positive");
     }
 
     /**

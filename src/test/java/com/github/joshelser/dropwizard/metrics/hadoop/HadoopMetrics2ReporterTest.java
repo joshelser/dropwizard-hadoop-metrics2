@@ -326,4 +326,28 @@ public class HadoopMetrics2ReporterTest {
     // Verify the units
     verifyRecordBuilderUnits(recordBuilder);
   }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void builderNegativeMaxCachedSize() {
+    Builder builder = HadoopMetrics2Reporter.forRegistry(mockRegistry)
+        .maximumCachedMetricsPerType(-1);
+
+    final String jmxContext = "MyJmxContext;sub=Foo";
+    final String desc = "Description";
+    final String recordName = "Metrics";
+
+    builder.build(mockMetricsSystem, jmxContext, desc, recordName);
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void builderZeroMaxCachedSize() {
+    Builder builder = HadoopMetrics2Reporter.forRegistry(mockRegistry)
+        .maximumCachedMetricsPerType(0);
+
+    final String jmxContext = "MyJmxContext;sub=Foo";
+    final String desc = "Description";
+    final String recordName = "Metrics";
+
+    builder.build(mockMetricsSystem, jmxContext, desc, recordName);
+  }
 }
