@@ -1,12 +1,11 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to you under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
+ * Copyright 2016 Josh Elser
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,16 +15,18 @@
  */
 package com.github.joshelser.dropwizard.metrics.hadoop;
 
-import static org.junit.Assert.*;
-
-import static org.mockito.Mockito.any;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Matchers.anyInt;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.doCallRealMethod;
 
-import java.util.Map.Entry;
 import java.util.Iterator;
+import java.util.Objects;
+import java.util.Map.Entry;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -47,6 +48,7 @@ public class BoundedQueueMaintenanceTest {
 
     // Call the real addEntriesToQueue method
     doCallRealMethod().when(reporter).addEntriesToQueue(any(ArrayBlockingQueue.class), any(SortedMap.class));
+    when(reporter.consumeIncomingMetrics(any(Iterator.class), anyInt())).thenCallRealMethod();
   }
 
   private void loadMap(TreeMap<String,Object> map, int numElementsToLoad) {
@@ -54,6 +56,16 @@ public class BoundedQueueMaintenanceTest {
     for (int i = 0; i < numElementsToLoad; i++) {
       map.put("metric" + i, o);
     }
+  }
+
+  private int count(Iterator<?> iter) {
+    Objects.requireNonNull(iter);
+    int count = 0;
+    while (iter.hasNext()) {
+      count++;
+      iter.next();
+    }
+    return count;
   }
   
   @Test
@@ -156,5 +168,33 @@ public class BoundedQueueMaintenanceTest {
     reporter.addEntriesToQueue(queue, metrics);
 
     assertEquals(8, queue.size());
+  }
+
+  @Test
+  public void incomingMetricPruning() {
+    TreeMap<String,Object> entries = new TreeMap<>();
+    loadMap(entries, 10);
+
+    Iterator<Entry<String,Object>> iter = entries.entrySet().iterator();
+    int entriesPruned = reporter.consumeIncomingMetrics(iter, 4);
+    assertEquals(4, entriesPruned);
+    assertEquals(6, count(iter));
+
+    entries.clear();
+    iter = entries.entrySet().iterator();
+    assertEquals(0, reporter.consumeIncomingMetrics(iter, 4));
+    assertEquals(0, count(iter));
+
+    loadMap(entries, 10);
+    iter = entries.entrySet().iterator();
+    entriesPruned = reporter.consumeIncomingMetrics(iter, 10);
+    assertEquals(10, entriesPruned);
+    assertEquals(0, count(iter));
+
+    loadMap(entries, 10);
+    iter = entries.entrySet().iterator();
+    entriesPruned = reporter.consumeIncomingMetrics(iter, 20);
+    assertEquals(10, entriesPruned);
+    assertEquals(0, count(iter));
   }
 }

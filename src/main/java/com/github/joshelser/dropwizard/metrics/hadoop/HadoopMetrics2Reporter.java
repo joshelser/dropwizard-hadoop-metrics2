@@ -15,10 +15,11 @@
  */
 package com.github.joshelser.dropwizard.metrics.hadoop;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -400,7 +401,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       SortedMap<String, Counter> counters, SortedMap<String, Histogram> histograms,
       SortedMap<String, Meter> meters, SortedMap<String, Timer> timers) {
     // ScheduledReporter is synchronizing on `this`, so we don't have to worry about concurrent
-    // invocations of this thread causing trouble.
+    // invocations of reporter causing trouble.
     addEntriesToQueue(dropwizardGauges, gauges);
     addEntriesToQueue(dropwizardCounters, counters);
     addEntriesToQueue(dropwizardHistograms, histograms);
@@ -418,17 +419,25 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
    * @param metrics The metrics elements to add to the queue
    */
   protected <T> void addEntriesToQueue(ArrayBlockingQueue<Entry<String,T>> queue, SortedMap<String,T> metrics) {
-    final Set<Entry<String,T>> metricsToAdd = metrics.entrySet();
-    int entriesLeftToAdd = metricsToAdd.size();
+    final Iterator<Entry<String,T>> metricsToAdd = metrics.entrySet().iterator();
+    int entriesLeftToAdd = metrics.size();
 
     // The number of metrics to add exceeds the number of metrics we can store, clear out the queue
     // while grabbing the lock once to be slightly more efficient.
-    if (entriesLeftToAdd > getMaxMetricsPerType()) {
+    if (entriesLeftToAdd >= getMaxMetricsPerType()) {
       queue.clear();
+
+      // If we have more metrics to add than we can cache, trim entries off the beginning of the map
+      // until we should be able to add all of the entries
+      final int excessEntries = entriesLeftToAdd - getMaxMetricsPerType();
+      // The SortedMap is also unmodifiable. Need to just read the entries, cannot remove them
+      final int entriesRemoved = consumeIncomingMetrics(metricsToAdd, excessEntries);
+      LOG.debug("Ignored {} incoming metric entries as they would not fit in the cache", entriesRemoved);
     }
 
     // Iterate over each metric we have to add
-    for (Entry<String,T> entry : metricsToAdd) {
+    while (metricsToAdd.hasNext()) {
+      Entry<String,T> entry = metricsToAdd.next();
       // Assume that we have space (normal condition)
       if (!queue.offer(entry)) {
         LOG.debug("Failed to add metrics element. Removing {} elements from queue", entriesLeftToAdd);
@@ -443,7 +452,7 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
         // Re-attempt to add the metric
         if (!queue.offer(entry)) {
           // Failed a second time to add an element again after trying to free space. Give up and drop the remaining metrics
-          LOG.debug("Failed to aggregate {} remaining metrics out of {}", entriesLeftToAdd, metricsToAdd.size());
+          LOG.debug("Failed to aggregate {} remaining metrics out of {}", entriesLeftToAdd, metrics.size());
           return;
         }
       }
@@ -451,6 +460,32 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
       // We successfully added the current entry (either immediately, or after the poll()'s and re-offer())
       entriesLeftToAdd--;
     }
+  }
+
+  /**
+   * Consumes (iterates over) {@code numEntriesToPrune} from {@code metrics}.
+   *
+   * @param metrics The metric entries to consume
+   * @param numEntriesToConsume The number of entries to consume
+   * @return the number of entries actually consumed
+   */
+  protected <T> int consumeIncomingMetrics(Iterator<Entry<String,T>> metrics, int numEntriesToConsume) {
+    // noop
+    if (numEntriesToConsume <= 0) {
+      return 0;
+    }
+
+    int entriesConsumed = 0;
+
+    // Keep removing metric items from the collection we have to cache until we can be sure they
+    // will all fit in the cache.
+    while (numEntriesToConsume > 0 && metrics.hasNext()) {
+      metrics.next();
+      numEntriesToConsume--;
+      entriesConsumed++;
+    }
+
+    return entriesConsumed;
   }
 
   @Override protected String getRateUnit() {
@@ -509,6 +544,18 @@ public class HadoopMetrics2Reporter extends ScheduledReporter implements Metrics
 
   ArrayBlockingQueue<Entry<String, Timer>> getDropwizardTimers() {
     return dropwizardTimers;
+  }
+
+  protected void printQueueDebugMessage() {
+    StringBuilder sb = new StringBuilder(64);
+    SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd hh:mm:ss");
+    sb.append(sdf.format(new Date())).append(" ================================\n");
+    sb.append("\n  Dropwizard gauges queue size: ").append(getDropwizardGauges().size());
+    sb.append("\n  Dropwizard counters queue size: ").append(getDropwizardCounters().size());
+    sb.append("\n  Dropwizard histograms queue size: ").append(getDropwizardHistograms().size());
+    sb.append("\n  Dropwizard meters queue size: ").append(getDropwizardMeters().size());
+    sb.append("\n  Dropwizard timers queue size: ").append(getDropwizardTimers().size()).append("\n");
+    System.out.println(sb.toString());
   }
 
   int getMaxMetricsPerType() {
