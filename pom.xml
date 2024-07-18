@@ -20,7 +20,7 @@
   <groupId>com.github.joshelser</groupId>
   <artifactId>dropwizard-metrics-hadoop-metrics2-reporter</artifactId>
   <name>Hadoop Metrics2 Reporter for Dropwizard Metrics</name>
-  <version>0.1.3-SNAPSHOT</version>
+  <version>0.2.0-SNAPSHOT</version>
   <description>A reporter for Dropwizard Metrics which announces measurements using Hadoop Metrics2.</description>
   <url>https://github.com/joshelser/dropwizard-hadoop-metrics2</url>
   <licenses>
@@ -48,7 +48,7 @@
     <connection>scm:git:https://github.com/joshelser/dropwizard-hadoop-metrics2.git</connection>
     <developerConnection>scm:git:git@github.com:joshelser/dropwizard-hadoop-metrics2.git</developerConnection>
     <url>https://github.com/joshelser/dropwizard-hadoop-metrics2</url>
-    <tag>dropwizard-metrics-hadoop-metrics2-reporter-0.1.0</tag>
+    <tag>dropwizard-metrics-hadoop-metrics2-reporter-0.2.0</tag>
   </scm>
   <developers>
     <developer>
@@ -58,11 +58,11 @@
     </developer>
   </developers>
   <properties>
-    <dropwizard-metrics.version>3.1.2</dropwizard-metrics.version>
-    <hadoop.version>2.6.0</hadoop.version>
+    <dropwizard-metrics.version>4.2.26</dropwizard-metrics.version>
+    <hadoop.version>3.3.6</hadoop.version>
     <junit.version>4.12</junit.version>
-    <maven.compiler.source>1.7</maven.compiler.source>
-    <maven.compiler.target>1.7</maven.compiler.target>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
     <maven-gpg-plugin.version>1.6</maven-gpg-plugin.version>
     <maven-javadoc-plugin.version>2.10.3</maven-javadoc-plugin.version>
     <maven-release-plugin.version>2.5.3</maven-release-plugin.version>
@@ -70,7 +70,7 @@
     <maven.test.redirectTestOutputToFile>true</maven.test.redirectTestOutputToFile>
     <mockito.version>1.10.19</mockito.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <slf4j.version>1.7.14</slf4j.version>
+    <slf4j.version>1.7.36</slf4j.version>
     <surefire-plugin.version>2.19.1</surefire-plugin.version>
   </properties>
   <dependencyManagement>
@@ -84,6 +84,7 @@
         <groupId>junit</groupId>
         <artifactId>junit</artifactId>
         <version>${junit.version}</version>
+        <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>org.apache.hadoop</groupId>
@@ -94,6 +95,7 @@
         <groupId>org.mockito</groupId>
         <artifactId>mockito-all</artifactId>
         <version>${mockito.version}</version>
+        <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>org.slf4j</groupId>
